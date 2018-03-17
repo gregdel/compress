@@ -1,70 +1,121 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
+
+	"github.com/sirupsen/logrus"
+	"github.com/urfave/cli"
 )
 
+type app struct {
+	cli *cli.App
+	log *logrus.Logger
+}
+
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("missing file name")
-		os.Exit(1)
+	app := &app{
+		cli: cli.NewApp(),
+		log: logrus.New(),
 	}
 
-	fileName := os.Args[1]
-	file, err := os.Open(fileName)
+	// Log format
+	app.log.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
+
+	app.cli.Name = "compress"
+	app.cli.Description = "compress"
+	app.cli.Usage = app.cli.Description
+	app.cli.HideVersion = true
+	app.cli.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "verbose, v",
+			Usage: "log everything",
+		},
+	}
+
+	flags := []cli.Flag{
+		cli.StringFlag{
+			Name:  "input, i",
+			Value: "",
+			Usage: "input file",
+		},
+		cli.StringFlag{
+			Name:  "output, o",
+			Value: "out.txt",
+			Usage: "output file",
+		},
+	}
+
+	app.cli.Commands = []cli.Command{
+		{
+			Name:   "compress",
+			Usage:  "compress a file",
+			Action: app.compress,
+			Flags:  flags,
+		},
+	}
+
+	app.cli.Run(os.Args)
+}
+
+func (app *app) compress(c *cli.Context) {
+	verbose := c.GlobalBool("verbose")
+	if verbose {
+		app.log.SetLevel(logrus.DebugLevel)
+	} else {
+		app.log.SetLevel(logrus.WarnLevel)
+	}
+
+	inputFile := c.String("input")
+	if inputFile == "" {
+		app.log.Fatal("missing input file")
+	}
+	outputFile := c.String("output")
+
+	file, err := os.Open(inputFile)
 	if err != nil {
-		fmt.Println("failed to open file: ", err)
-		os.Exit(1)
+		app.log.Fatalf("failed to open file: %s", err)
 	}
 	defer file.Close()
 
-	fmt.Printf("reading file: %s\n", fileName)
+	app.log.Debugf("reading file: %s", inputFile)
 
-	c := newCompressor()
+	comp := newCompressor(app.log)
 
 	begin := time.Now()
 
-	if err := c.analyse(file); err != nil {
-		fmt.Println("failed to analyse file: ", err)
-		os.Exit(1)
+	if err := comp.analyse(file); err != nil {
+		app.log.Fatalf("failed analyse file: %s", err)
 	}
-	fmt.Printf("analysing phase done in %s\n", time.Since(begin))
+	app.log.Debugf("analysing phase done in %s", time.Since(begin))
 
 	start := time.Now()
-	if err := c.buildTree(); err != nil {
-		fmt.Println("failed to build tree: ", err)
-		os.Exit(1)
+	if err := comp.buildTree(); err != nil {
+		app.log.Fatalf("failed to build tree: %s", err)
 	}
-	fmt.Printf("building tree phase done in %s\n", time.Since(start))
+	app.log.Debugf("building tree phase done in %s", time.Since(start))
 
 	start = time.Now()
-	if err := c.buildTable(); err != nil {
-		fmt.Println("failed to build table: ", err)
-		os.Exit(1)
+	if err := comp.buildTable(); err != nil {
+		app.log.Fatalf("failed to build table: %s", err)
 	}
-	fmt.Printf("building table phase done in %s\n", time.Since(start))
+	app.log.Debugf("building table phase done in %s", time.Since(start))
 
-	output, err := os.Create("output.gc")
+	output, err := os.Create(outputFile)
 	if err != nil {
-		fmt.Println("failed to create output file : ", err)
+		app.log.Debugf("failed to create output file : ", err)
 		os.Exit(1)
 	}
 	defer output.Close()
 
 	start = time.Now()
-	if err := c.compress(file, output); err != nil {
-		fmt.Println("failed to compress file : ", err)
-		os.Exit(1)
+	if err := comp.compress(file, output); err != nil {
+		app.log.Fatalf("failed to compress file : %s", err)
 	}
-	fmt.Printf("compressing file done in %s\n", time.Since(start))
+	app.log.Debugf("compressing file done in %s", time.Since(start))
 
-	fmt.Printf("input size: %d\n", c.inputSize)
-	fmt.Printf("output size: %d\n", c.outputSize)
+	app.log.Debugf("input size: %d", comp.inputSize)
+	app.log.Debugf("output size: %d", comp.outputSize)
 
-	compressionFactor := (float64(c.outputSize) * 100) / float64(c.inputSize)
-	fmt.Printf("compression factor: %.02f%%\n", compressionFactor)
-
-	fmt.Printf("done in %s\n", time.Since(begin))
+	app.log.Debugf("done in %s", time.Since(begin))
 }

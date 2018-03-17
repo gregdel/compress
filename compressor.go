@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/sirupsen/logrus"
 )
 
 type encodedChar struct {
@@ -24,6 +26,9 @@ type compressor struct {
 	table map[byte]encodedChar
 
 	treeRoot *node
+
+	// logger
+	log *logrus.Logger
 }
 
 type node struct {
@@ -39,8 +44,9 @@ type node struct {
 	rChild *node
 }
 
-func newCompressor() *compressor {
+func newCompressor(log *logrus.Logger) *compressor {
 	return &compressor{
+		log:   log,
 		stats: map[byte]int{},
 		table: map[byte]encodedChar{},
 	}
@@ -143,7 +149,7 @@ func (c *compressor) compress(r io.ReadSeeker, w io.Writer) error {
 		return err
 	}
 	c.outputSize += n
-	fmt.Printf("header size indicator: %d\n", n)
+	c.log.Debugf("header size indicator: %d", n)
 
 	// Write the table
 	s, err := headers.WriteTo(w)
@@ -154,7 +160,7 @@ func (c *compressor) compress(r io.ReadSeeker, w io.Writer) error {
 	if s != int64(headersLen) {
 		return fmt.Errorf("len missmatch %d / %d", s, headersLen)
 	}
-	fmt.Printf("header size: %d\n", s)
+	c.log.Debugf("header size: %d", s)
 
 	// Reset the file seek
 	if _, err := r.Seek(io.SeekStart, io.SeekStart); err != nil {
