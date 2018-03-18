@@ -8,7 +8,7 @@ import (
 
 func TestBitEncoder(t *testing.T) {
 	type bits struct {
-		bits uint8
+		bits uint64
 		size uint8
 	}
 
@@ -22,35 +22,49 @@ func TestBitEncoder(t *testing.T) {
 			// 00000111
 			toWrite: []bits{{0x7, 0x3}},
 			// 11100000
-			expectedResult: []byte{0xe0},
+			expectedResult: []byte{0xe0, 0, 0, 0, 0, 0, 0, 0},
 		},
 		{
 			name: "two bytes with bit padding",
 			// 10101010 00000011
 			toWrite: []bits{{0xaa, 8}, {0x3, 2}},
 			// 11100000 11000000
-			expectedResult: []byte{0xaa, 0xc0},
+			expectedResult: []byte{0xaa, 0xc0, 0, 0, 0, 0, 0, 0},
 		},
 		{
 			name: "concat two bytes",
 			// 00101010 00000011
 			toWrite: []bits{{0x2a, 6}, {0x3, 2}},
 			// 10101011
-			expectedResult: []byte{0xab},
+			expectedResult: []byte{0xab, 0, 0, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "concat three bytes",
+			// 00101010 00000110 00000011
+			toWrite: []bits{{0x2a, 6}, {0x6, 3}, {0x3, 2}},
+			// 10101011 01100000
+			expectedResult: []byte{0xab, 0x60, 0, 0, 0, 0, 0, 0},
 		},
 		{
 			name: "two bytes with splitting",
 			// 00101010 00000111
 			toWrite: []bits{{0x2a, 6}, {0x7, 3}},
 			// 10101011 10000000
-			expectedResult: []byte{0xab, 0x80},
+			expectedResult: []byte{0xab, 0x80, 0, 0, 0, 0, 0, 0},
 		},
 		{
 			name: "four bytes with splitting",
 			// 00101010 00000111 11111111 00000111
 			toWrite: []bits{{0x2a, 6}, {0x7, 3}, {0xff, 8}, {0x7, 3}},
 			// 10101011 1111111 11110000
-			expectedResult: []byte{0xab, 0xff, 0xf0},
+			expectedResult: []byte{0xab, 0xff, 0xf0, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "uint16",
+			// 110101010 00000011
+			toWrite: []bits{{0x1aa, 9}, {0x3, 2}},
+			// 11010101 01100000
+			expectedResult: []byte{0xd5, 0x60, 0, 0, 0, 0, 0, 0},
 		},
 	}
 
@@ -90,8 +104,8 @@ func TestBitEncoder(t *testing.T) {
 
 			if !reflect.DeepEqual(result, tc.expectedResult) {
 				t.Fatalf("expected %s, got %s",
-					bitString(result),
 					bitString(tc.expectedResult),
+					bitString(result),
 				)
 			}
 		})

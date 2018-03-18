@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bytes"
+	"encoding/binary"
 	"io"
 )
 
 type bitEncoder struct {
 	// Buffer to hold the bytes
-	buffer []byte
+	buffer []uint64
 	// Position in the buffer
 	n int
 	// bit position
@@ -23,7 +23,7 @@ type bitEncoder struct {
 // New encoder with a specific buffer size and an output writer
 func newBitEncoder(w io.Writer, bufSize int) *bitEncoder {
 	return &bitEncoder{
-		buffer:  make([]byte, bufSize),
+		buffer:  make([]uint64, bufSize),
 		bufSize: bufSize,
 		w:       w,
 	}
@@ -35,15 +35,15 @@ func (be *bitEncoder) totalEncoded() int {
 }
 
 // This function writes bits, it flushes the buffer if necessary
-func (be *bitEncoder) writeBits(bits, size uint8) error {
-	var spaceLeft = 8 - be.bits
+func (be *bitEncoder) writeBits(bits uint64, size uint8) error {
+	var spaceLeft = 64 - be.bits
 
 	// No space left, flush
 	if spaceLeft == 0 {
 		if err := be.flush(); err != nil {
 			return err
 		}
-		spaceLeft = 8
+		spaceLeft = 64
 	}
 
 	// Not there is not enough space to write the bits
@@ -52,7 +52,7 @@ func (be *bitEncoder) writeBits(bits, size uint8) error {
 
 		// Write in the remaining space
 		be.buffer[be.n] = (be.buffer[be.n] << spaceLeft) | (bits >> remainingBitCount)
-		be.bits = 8
+		be.bits = 64
 
 		// Flush
 		if (be.n + 1) > (be.bufSize - 1) {
@@ -84,26 +84,21 @@ func (be *bitEncoder) flush() error {
 	}
 
 	// Pad right the remaining space in the byte:
-	// bits = 2
-	// shift 6 - bits to the left
-	// 00000011 => 11000000
-	if be.bits != 8 {
-		be.buffer[be.n] <<= (8 - be.bits)
+	if be.bits != 64 {
+		be.buffer[be.n] <<= (64 - be.bits)
 		be.bits = 0
 	}
 
 	// Write to the output buffer
-	buf := bytes.NewBuffer(be.buffer)
-	n, err := io.CopyN(be.w, buf, int64(be.n+1))
-	if err != nil {
+	if err := binary.Write(be.w, binary.BigEndian, be.buffer[:be.n+1]); err != nil {
 		return err
 	}
-	be.encoded += int(n)
+	be.encoded += (be.n + 1) * 8
 
 	// Reset the buffer
 	be.n = 0
 	be.bits = 0
-	be.buffer = make([]byte, be.bufSize)
+	be.buffer = make([]uint64, be.bufSize)
 
 	return nil
 }

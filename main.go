@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -53,6 +52,12 @@ func main() {
 			Action: app.compress,
 			Flags:  flags,
 		},
+		{
+			Name:   "decompress",
+			Usage:  "decompress a file",
+			Action: app.decompress,
+			Flags:  flags,
+		},
 	}
 
 	app.cli.Run(os.Args)
@@ -80,42 +85,49 @@ func (app *app) compress(c *cli.Context) {
 
 	app.log.Debugf("reading file: %s", inputFile)
 
-	comp := newCompressor(app.log)
-
-	begin := time.Now()
-
-	if err := comp.analyse(file); err != nil {
-		app.log.Fatalf("failed analyse file: %s", err)
-	}
-	app.log.Debugf("analysing phase done in %s", time.Since(begin))
-
-	start := time.Now()
-	if err := comp.buildTree(); err != nil {
-		app.log.Fatalf("failed to build tree: %s", err)
-	}
-	app.log.Debugf("building tree phase done in %s", time.Since(start))
-
-	start = time.Now()
-	if err := comp.buildTable(); err != nil {
-		app.log.Fatalf("failed to build table: %s", err)
-	}
-	app.log.Debugf("building table phase done in %s", time.Since(start))
-
 	output, err := os.Create(outputFile)
 	if err != nil {
-		app.log.Debugf("failed to create output file : ", err)
-		os.Exit(1)
+		app.log.Fatalf("failed to create output file : %s", err)
 	}
 	defer output.Close()
 
-	start = time.Now()
+	comp := newCompressor(app.log, 1024)
 	if err := comp.compress(file, output); err != nil {
 		app.log.Fatalf("failed to compress file : %s", err)
 	}
-	app.log.Debugf("compressing file done in %s", time.Since(start))
+}
 
-	app.log.Debugf("input size: %d", comp.inputSize)
-	app.log.Debugf("output size: %d", comp.outputSize)
+// decompress a file
+func (app *app) decompress(c *cli.Context) {
+	verbose := c.GlobalBool("verbose")
+	if verbose {
+		app.log.SetLevel(logrus.DebugLevel)
+	} else {
+		app.log.SetLevel(logrus.WarnLevel)
+	}
 
-	app.log.Debugf("done in %s", time.Since(begin))
+	inputFile := c.String("input")
+	if inputFile == "" {
+		app.log.Fatal("missing input file")
+	}
+	outputFile := c.String("output")
+
+	input, err := os.Open(inputFile)
+	if err != nil {
+		app.log.Fatalf("failed to open file: %s", err)
+	}
+	defer input.Close()
+
+	output, err := os.Create(outputFile)
+	if err != nil {
+		app.log.Fatalf("failed to create output file : %s", err)
+	}
+	defer output.Close()
+
+	comp := newCompressor(app.log, 8)
+	if err := comp.decompress(input, output); err != nil {
+		app.log.Fatalf("failed to decompress file : %s", err)
+	}
+
+	app.log.Debugf("reading file: %s", inputFile)
 }
