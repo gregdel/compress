@@ -22,7 +22,9 @@ func TestReadBit(t *testing.T) {
 	}
 
 	inputBuffer := bytes.NewBuffer(input)
-	dec := newBitDecoder(inputBuffer, 2)
+	// Buffer size 2
+	// Expected output size 3
+	dec := newBitDecoder(inputBuffer, 2, 3)
 
 	output := []byte{}
 	for {

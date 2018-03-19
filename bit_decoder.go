@@ -17,19 +17,27 @@ type bitDecoder struct {
 	bit uint8
 	// Reader to read the bytes from
 	r io.Reader
-	// Counter of decoded bytes
-	decoded int
+	// number of decoded bytes
+	decoded uint64
+	// expected ouput size
+	expectedOuputSize uint64
 }
 
 // New decoder with a specific buffer size and an output writer
-func newBitDecoder(r io.Reader, bufSize int) *bitDecoder {
+func newBitDecoder(r io.Reader, bufSize int, expectedOuputSize uint64) *bitDecoder {
 	return &bitDecoder{
-		buffer:  make([]byte, bufSize),
-		bufSize: bufSize,
-		r:       r,
-		n:       bufSize + 1,
-		maxRead: bufSize,
+		buffer:            make([]byte, bufSize),
+		bufSize:           bufSize,
+		r:                 r,
+		n:                 bufSize + 1,
+		maxRead:           bufSize,
+		expectedOuputSize: expectedOuputSize,
 	}
+}
+
+// Return the number of byte decoded
+func (bd *bitDecoder) totalDecoded() uint64 {
+	return bd.decoded
 }
 
 func (bd *bitDecoder) readBit() (uint8, error) {
@@ -63,4 +71,50 @@ func (bd *bitDecoder) readBit() (uint8, error) {
 	}
 
 	return bit, nil
+}
+
+func (bd *bitDecoder) decode(w io.Writer, c *compressor) error {
+	for {
+		// Read a bit from the input
+		char, err := bd.getCharFromTree(c)
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		// Write the char
+		n, err := w.Write([]byte{char})
+		if err != nil {
+			return err
+		}
+
+		bd.decoded += uint64(n)
+	}
+}
+
+func (bd *bitDecoder) getCharFromTree(c *compressor) (byte, error) {
+	node := c.treeRoot
+	for {
+		if bd.decoded >= bd.expectedOuputSize {
+			return 0, io.EOF
+		}
+
+		bit, err := bd.readBit()
+		if err != nil {
+			return 0, err
+		}
+
+		if bit == 1 {
+			node = node.rChild
+		} else {
+			node = node.lChild
+		}
+
+		if node.leaf {
+			return node.char, nil
+		}
+	}
 }

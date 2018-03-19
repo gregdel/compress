@@ -120,8 +120,8 @@ func (c *compressor) buildTree() error {
 }
 
 func (c *compressor) buildTable() error {
-	c.treeRoot.value = 0x1
-	c.treeRoot.valueLength = 1
+	c.treeRoot.value = 0x0
+	c.treeRoot.valueLength = 0
 	return c.exploreSubtree(c.treeRoot)
 }
 
@@ -205,6 +205,15 @@ func (c *compressor) compress(r io.ReadSeeker, w io.Writer) error {
 	c.outputSize += n
 	c.log.Debugf("header size indicator: %d", n)
 
+	// Write the input size in a uint64
+	binary.LittleEndian.PutUint64(h, uint64(c.inputSize))
+	n, err = w.Write(h)
+	if err != nil {
+		return err
+	}
+	c.outputSize += n
+	c.log.Debugf("file size indicator: %d", n)
+
 	// Write the table
 	s, err := headers.WriteTo(w)
 	if err != nil {
@@ -250,15 +259,23 @@ func (c *compressor) decompress(r io.Reader, w io.Writer) error {
 	// Read header size and decompress
 	// Read the rest of the file and go through the tree
 	// Write the table length in a uint64
-	headersLenBuffer := make([]byte, 8)
-	n, err := r.Read(headersLenBuffer)
+	uint64Buf := make([]byte, 8)
+	n, err := r.Read(uint64Buf)
 	if err != nil {
 		return err
 	}
 	c.outputSize += n
-	headersLen := binary.LittleEndian.Uint64(headersLenBuffer)
+	headersLen := binary.LittleEndian.Uint64(uint64Buf)
 
 	c.log.Debugf("header size indicator: %d", headersLen)
+
+	// Read the expected output size
+	n, err = r.Read(uint64Buf)
+	if err != nil {
+		return err
+	}
+	c.outputSize += n
+	expectedOuputSize := binary.LittleEndian.Uint64(uint64Buf)
 
 	statsBuffer := make([]byte, headersLen)
 	n, err = r.Read(statsBuffer)
@@ -278,55 +295,7 @@ func (c *compressor) decompress(r io.Reader, w io.Writer) error {
 		return err
 	}
 
-	return c.decode(r, w)
-}
-
-func (c *compressor) decode(r io.Reader, w io.Writer) error {
-	// Go through the tree and decode
-	bitDecoder := newBitDecoder(r, c.buffersSize)
-	for {
-		// Read a bit from the input
-		char, err := c.getCharFromTree(bitDecoder)
-		if err == io.EOF {
-			return nil
-		}
-
-		if err != nil {
-			return err
-		}
-
-		// Write the char
-		_, err = w.Write([]byte{char})
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (c *compressor) getCharFromTree(bd *bitDecoder) (byte, error) {
-	node := c.treeRoot
-	bit, err := bd.readBit()
-	if err != nil {
-		return 0, err
-	}
-	if bit == 0 {
-		return 0, io.EOF
-	}
-
-	for {
-		bit, err = bd.readBit()
-		if err != nil {
-			return 0, err
-		}
-
-		if bit == 1 {
-			node = node.rChild
-		} else {
-			node = node.lChild
-		}
-
-		if node.leaf {
-			return node.char, nil
-		}
-	}
+	// Use the bit decoder to decode the file
+	bitDecoder := newBitDecoder(r, c.buffersSize, expectedOuputSize)
+	return bitDecoder.decode(w, c)
 }

@@ -124,7 +124,7 @@ func (app *app) decompress(c *cli.Context) {
 	}
 	defer output.Close()
 
-	comp := newCompressor(app.log, 8)
+	comp := newCompressor(app.log, 1024)
 	if err := comp.decompress(input, output); err != nil {
 		app.log.Fatalf("failed to decompress file : %s", err)
 	}

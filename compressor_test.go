@@ -70,11 +70,11 @@ func TestGetCharFromTree(t *testing.T) {
 	comp := newCompressor(log, 1)
 
 	// Tree values
-	// 1 => 100
-	// 2 => 101
-	// 3 => 110
-	// 4 => 1110
-	// 5 => 1111
+	// 1 => 00
+	// 2 => 01
+	// 3 => 10
+	// 4 => 110
+	// 5 => 111
 	comp.treeRoot = &node{
 		lChild: &node{
 			lChild: &node{char: 1, leaf: true},
@@ -89,15 +89,17 @@ func TestGetCharFromTree(t *testing.T) {
 		},
 	}
 
-	// 12345 => 10010111 01110111 10000000
+	// 12345 => 00011011 01110000
 	input := bytes.NewBuffer([]byte{
-		0x97, 0x77, 0x80,
+		0x1b, 0x70,
 	})
 	expectedOutput := []byte{1, 2, 3, 4, 5}
 
 	output := &bytes.Buffer{}
+	// Expected output size: 5
+	bitDecoder := newBitDecoder(input, 2, 5)
 
-	if err := comp.decode(input, output); err != nil {
+	if err := bitDecoder.decode(output, comp); err != nil {
 		t.Fatalf("failed to decode: %s", err)
 	}
 
